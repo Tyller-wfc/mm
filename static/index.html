@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MiniChat</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans SC", "PingFang SC", "Microsoft Yahei", sans-serif;
+      background: #f5f7fa;
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    .wrap {
+      width: min(1000px, 92vw);
+      height: 92vh;
+      max-height: 720px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 12px;
+      background: #fff;
+      border: 1px solid #dcdfe6;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      overflow: hidden;
+      position: relative;
+    }
+    header { display: flex; align-items: center; justify-content: space-between; }
+    header .title { font-weight: 700; font-size: 20px; color: #2563eb; }
+    header .me { font-size: 14px; color: #666; }
+
+    .main {
+      display: grid; grid-template-columns: 1fr 240px; gap: 12px;
+      min-height: 0;
+    }
+    .chat, aside {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: #fafafa;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+    .msg {
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: #eef2f7;
+      line-height: 1.5;
+      max-width: 80%;
+      word-break: break-word;
+    }
+    .mine { align-self: flex-end; background: #d9f2e5; }
+    .system { align-self: center; background: transparent; color: #888; font-size: 13px; }
+    .msg img {
+      max-width: 360px;
+      max-height: 260px;
+      border-radius: 8px;
+      display: block;
+    }
+    aside h3 { margin: 0 0 6px 0; font-size: 14px; color: #333; }
+    .users { font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+
+    .input {
+      display: grid;
+      grid-template-columns: auto auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+    .input input[type="text"] {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 15px;
+      outline: none;
+      background: #fff;
+      color: #333;
+    }
+    .input button {
+      background: #2563eb;
+      border: none;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+      min-height: 40px;
+      touch-action: manipulation;
+    }
+    .input button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .muted { color: #777; font-size: 12px; }
+    .ts { color: #999; font-size: 11px; margin-left: 6px; }
+    .drop {
+      border: 2px dashed #bcd0ff;
+      border-radius: 10px;
+      padding: 6px;
+      text-align: center;
+      color: #557;
+      font-size: 12px;
+      background: #fff;
+      flex: 0 0 auto;
+    }
+
+    /* Emoji/Sticker panel */
+    .emoji-panel {
+      position: absolute;
+      z-index: 20;
+      top: 72px;
+      left: 16px;
+      right: 16px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      padding: 10px;
+      display: none;
+    }
+    .emoji-panel .tabs { display: flex; gap: 8px; margin-bottom: 8px; }
+    .emoji-panel .tab {
+      background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px;
+      padding: 6px 10px; cursor: pointer; font-weight: 600; color: #333;
+    }
+    .emoji-panel .tab.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .emoji-panel .content { max-height: 220px; overflow: auto; }
+    .emoji-panel .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 6px; }
+    .emoji-panel .grid img { width: 56px; height: 56px; object-fit: contain; cursor: pointer; }
+    .emoji-item {
+      display: flex; align-items: center; justify-content: center;
+      height: 36px; border-radius: 8px; background: #f9fafb; border: 1px solid #e5e7eb;
+      font-size: 20px; cursor: pointer;
+    }
+    .emoji-panel .grid:not(.active) { display: none; }
+
+    /* nickname first-visit modal */
+    .modal-mask {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      display: none; align-items: center; justify-content: center; z-index: 100;
+    }
+    .modal {
+      width: min(480px, 92vw);
+      background: #fff; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.2);
+      padding: 18px; display: grid; gap: 12px;
+      border: 1px solid #e5e7eb;
+    }
+    .modal h3 { margin: 0; font-size: 18px; color: #111; }
+    .modal .row { display: grid; gap: 8px; }
+    .modal input[type="text"] {
+      border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; font-size: 15px;
+    }
+    .modal .actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .btn { background: #2563eb; border: none; color: #fff; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+    .btn.secondary { background: #f3f4f6; color: #333; border: 1px solid #e5e7eb; }
+
+    /* 当弹窗显示时，强制隐藏底部昵称/加入（双保险） */
+    #nameMask[style*="display: flex"] ~ .main + .input #name,
+    #nameMask[style*="display: flex"] ~ .main + .input #join {
+      display: none !important;
+    }
+
+    /* Mobile-friendly */
+    :root { --safe-bottom: env(safe-area-inset-bottom, 0px); }
+    @supports (height: 100dvh) {
+      body { height: 100dvh; }
+      .wrap { height: 100dvh; max-height: none; }
+    }
+
+    @media (max-width: 640px) {
+      body { height: 100dvh; }
+      .wrap {
+        width: 100vw;
+        height: 100dvh;
+        max-height: none;
+        border-radius: 0;
+        padding: 8px;
+      }
+      .main { grid-template-columns: 1fr; }
+      aside { order: 3; max-height: 30vh; overflow: auto; }
+      .chat { order: 1; }
+      .input {
+        order: 2;
+        position: sticky;
+        bottom: 0;
+        background: #fff;
+        padding-top: 8px;
+        padding-bottom: calc(8px + var(--safe-bottom));
+        display: grid;
+        grid-template-columns: auto auto 1fr auto; /* emoji, image, msg, send */
+        gap: 8px;
+      }
+      .emoji-panel {
+        position: fixed;
+        left: 8px; right: 8px;
+        bottom: calc(60px + var(--safe-bottom));
+        top: auto;
+        max-height: 40vh;
+      }
+      .drop { font-size: 11px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">MiniChat</div>
+      <div class="me">你的昵称：<span id="meName">未设置</span></div>
+    </header>
+
+    <!-- Nickname modal -->
+    <div id="nameMask" class="modal-mask">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="nameTitle">
+        <h3 id="nameTitle">设置你的昵称</h3>
+        <div class="row">
+          <label for="firstName">昵称</label>
+          <input id="firstName" type="text" placeholder="例如：小明 / Alice" />
+        </div>
+        <div class="actions">
+          <button id="nameCancel" class="btn secondary">稍后</button>
+          <button id="nameOk" class="btn">进入聊天室</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <section class="chat">
+        <div class="drop">拖拽图片到这里，或在输入框内粘贴图片，即可发送（≤5MB）</div>
+        <div id="messages" class="messages"></div>
+      </section>
+      <aside>
+        <h3>在线用户</h3>
+        <div class="users" id="users"></div>
+        <div class="muted">Tips：换个浏览器/无痕窗口可模拟多人。</div>
+      </aside>
+    </div>
+
+    <div class="input">
+      <button id="emojiBtn" title="表情">😀</button>
+      <button id="pickBtn" title="发送图片">图片</button>
+      <input id="name" type="text" placeholder="输入你的昵称…" />
+      <button id="join">加入</button>
+      <input id="msg" type="text" placeholder="输入消息，回车发送…" disabled />
+      <button id="send" disabled>发送</button>
+      <input id="pick" type="file" accept="image/*" style="display:none" />
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var el = function(s) { return document.querySelector(s); };
+      var messages = el('#messages');
+      var users = el('#users');
+      var meName = el('#meName');
+      var joinBtn = el('#join');
+      var sendBtn = el('#send');
+      var nameInput = el('#name');
+      var msgInput = el('#msg');
+      var picker = el('#pick');
+      var pickBtn = el('#pickBtn');
+      var emojiBtn = el('#emojiBtn');
+      var dropZone = document.querySelector('.drop');
+      var ws = null, me = null;
+
+      /* 如果你的页面里没有这段面板 HTML，下面会创建一份（包含贴纸四张） */
+      var emojiPanel = (function ensureEmojiPanel(){
+        var panel = document.getElementById('emojiPanel');
+        if (!panel) {
+          panel = document.createElement('div');
+          panel.id = 'emojiPanel';
+          panel.className = 'emoji-panel';
+          panel.innerHTML =
+            '<div class="tabs">' +
+              '<button data-tab="emojis" class="tab active">表情</button>' +
+              '<button data-tab="stickers" class="tab">贴纸</button>' +
+            '</div>' +
+            '<div class="content">' +
+              '<div class="emojis grid active" id="emojiGrid"></div>' +
+              '<div class="stickers grid" id="stickerGrid">' +
+                '<img src="/static/stickers/smile.svg" alt="smile" data-name="smile.svg"/>' +
+                '<img src="/static/stickers/heart.svg" alt="heart" data-name="heart.svg"/>' +
+                '<img src="/static/stickers/thumbs.svg" alt="thumbs" data-name="thumbs.svg"/>' +
+                '<img src="/static/stickers/party.svg" alt="party" data-name="party.svg"/>' +
+              '</div>' +
+            '</div>';
+          document.querySelector('.wrap').appendChild(panel);
+        }
+        return panel;
+      })();
+      var emojiGrid = document.getElementById('emojiGrid');
+      var stickerGrid = document.getElementById('stickerGrid');
+
+      function wsUrl(username) {
+        var loc = window.location;
+        var proto = (loc.protocol === 'https:') ? 'wss' : 'ws';
+        return proto + '://' + loc.host + '/ws?username=' + encodeURIComponent(username);
+      }
+
+      function scrollToBottom() { messages.scrollTop = messages.scrollHeight; }
+
+      var MAX_VISIBLE = 20;
+      function trimToMax() {
+        while (messages.children.length > MAX_VISIBLE) {
+          messages.removeChild(messages.firstChild);
+        }
+      }
+
+      function addMessage(obj, mine) {
+        var type = obj.type, user = obj.user, data = obj.data, name = obj.name, ts = obj.ts;
+        var div = document.createElement('div');
+        div.className = 'msg ' + (type === 'system' ? 'system' : (mine ? 'mine' : ''));
+        if (type === 'system') {
+          div.textContent = data;
+        } else if (type === 'image') {
+          var who = document.createElement('div');
+          who.innerHTML = '<strong>' + (user || '系统') + ':</strong> <span class="ts">' + (ts || '') + '</span>';
+          var img = document.createElement('img');
+          img.src = data;
+          img.alt = name || '图片';
+          img.loading = 'lazy';
+          img.style.cursor = 'pointer';
+          img.onclick = function() { window.open(data, '_blank'); };
+          img.onload = function() { scrollToBottom(); };
+          div.appendChild(who);
+          div.appendChild(img);
+          if (name) {
+            var cap = document.createElement('div');
+            cap.className = 'ts';
+            cap.textContent = name;
+            div.appendChild(cap);
+          }
+        } else {
+          var who2 = document.createElement('strong');
+          who2.textContent = (user || '系统') + ': ';
+          var text = document.createElement('span');
+          text.textContent = data;
+          div.appendChild(who2);
+          div.appendChild(text);
+          if (ts) {
+            var t = document.createElement('span');
+            t.className = 'ts';
+            t.textContent = ts;
+            div.appendChild(t);
+          }
+        }
+        messages.appendChild(div);
+        trimToMax();
+        scrollToBottom();
+      }
+
+      function setUsers(list) {
+        users.innerHTML = '';
+        for (var i = 0; i < list.length; i++) {
+          var item = document.createElement('div');
+          item.textContent = '• ' + list[i];
+          users.appendChild(item);
+        }
+      }
+
+      // 带 60s 超时保护的上传
+      function uploadAndSend(file) {
+        if (!file) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          alert('请先加入聊天室');
+          return;
+        }
+        var form = new FormData();
+        form.append('file', file);
+
+        var controller = new AbortController();
+        var timer = setTimeout(function(){ controller.abort(); }, 60000);
+
+        fetch('/upload', { method: 'POST', body: form, signal: controller.signal })
+          .then(function(res) {
+            if (!res.ok) return res.json().then(function(e){ throw new Error(e.detail || '上传失败'); });
+            return res.json();
+          })
+          .then(function(info) {
+            ws.send(JSON.stringify({ type: 'image', data: info.url, name: info.name }));
+            scrollToBottom();
+            picker.value = '';
+          })
+          .catch(function(e) {
+            var msg = (e.name === 'AbortError') ? '图片上传超时（60s），请检查网络/扩展' : ('图片发送失败：' + e.message);
+            addMessage({ type: 'system', data: msg });
+            picker.value = '';
+          })
+          .finally(function(){ clearTimeout(timer); });
+      }
+
+      function connect() {
+        var username = nameInput.value.trim() || ('访客' + Math.floor(Math.random()*1000));
+        me = username;
+        meName.textContent = me;
+        ws = new WebSocket(wsUrl(username));
+        ws.onopen = function() {
+          msgInput.disabled = false;
+          sendBtn.disabled = false;
+          nameInput.disabled = true;
+          joinBtn.disabled = true;
+          // 加入后隐藏底部昵称/加入
+          try { nameInput.style.display = 'none'; } catch(e) {}
+          try { joinBtn.style.display = 'none'; } catch(e) {}
+          msgInput.focus();
+        };
+        ws.onmessage = function(ev) {
+          var msg = {};
+          try { msg = JSON.parse(ev.data); } catch (e) { return; }
+          if (msg.type === 'participants') setUsers(msg.data || []);
+          else if (msg.type === 'history') {
+            var arr = msg.data || [];
+            for (var i = 0; i < arr.length; i++) addMessage(arr[i], arr[i].user === me);
+          } else if (msg.type === 'chat' || msg.type === 'system' || msg.type === 'image') {
+            addMessage(msg, msg.user === me);
+          }
+        };
+        ws.onclose = function() {
+          addMessage({ type: 'system', data: '连接已关闭，请重新加入。' });
+          msgInput.disabled = true;
+          sendBtn.disabled = true;
+          nameInput.disabled = false;
+          joinBtn.disabled = false;
+          try { nameInput.style.display = ''; } catch(e) {}
+          try { joinBtn.style.display = ''; } catch(e) {}
+        };
+      }
+
+      // Emoji & Stickers
+      var EMOJIS = ["😀","😁","😂","🤣","😊","😍","😘","😎","🤔","👍","👏","🙌","🙏","💪","🔥","🎉","🥳","🌟","💯","❤️","🧡","💛","💚","💙","💜","🤍","🤎","🖤","✨","😴"];
+      var emojiGrid = document.getElementById('emojiGrid');
+      var stickerGrid = document.getElementById('stickerGrid');
+
+      function renderEmojis(){
+        emojiGrid.innerHTML = "";
+        for (var i=0;i<EMOJIS.length;i++){
+          var item = document.createElement('div');
+          item.className = 'emoji-item';
+          item.textContent = EMOJIS[i];
+          item.title = EMOJIS[i];
+          item.addEventListener('click', function(e){
+            insertAtCursor(msgInput, e.currentTarget.textContent);
+            msgInput.focus();
+          });
+          emojiGrid.appendChild(item);
+        }
+      }
+      function insertAtCursor(input, text){
+        var start = input.selectionStart || 0;
+        var end = input.selectionEnd || 0;
+        var value = input.value;
+        input.value = value.substring(0, start) + text + value.substring(end);
+        var cursor = start + text.length;
+        input.selectionStart = input.selectionEnd = cursor;
+      }
+      renderEmojis();
+
+      function toggleEmojiPanel(){
+        var visible = emojiPanel.style.display !== 'none';
+        emojiPanel.style.display = visible ? 'none' : 'block';
+      }
+      document.getElementById('emojiBtn').addEventListener('click', function(){ toggleEmojiPanel(); });
+      document.addEventListener('click', function(e){
+        var target = e.target;
+        if (!emojiPanel.contains(target) && target !== document.getElementById('emojiBtn')){
+          emojiPanel.style.display = 'none';
+        }
+      });
+      (function(){
+        var tabs = emojiPanel.querySelectorAll('.tab');
+        for (var i=0;i<tabs.length;i++){
+          (function(tab){
+            tab.addEventListener('click', function(){
+              for (var j=0;j<tabs.length;j++){ tabs[j].classList.remove('active'); }
+              tab.classList.add('active');
+              if (tab.getAttribute('data-tab') === 'emojis'){
+                emojiPanel.querySelector('.emojis').classList.add('active');
+                emojiPanel.querySelector('.stickers').classList.remove('active');
+              } else {
+                emojiPanel.querySelector('.emojis').classList.remove('active');
+                emojiPanel.querySelector('.stickers').classList.add('active');
+              }
+            });
+          })(tabs[i]);
+        }
+      })();
+      if (stickerGrid) {
+        stickerGrid.addEventListener('click', function(e){
+          var img = e.target.closest('img');
+          if (!img) return;
+          if (!ws || ws.readyState !== WebSocket.OPEN) {
+            alert('请先加入聊天室');
+            return;
+          }
+          var url = img.getAttribute('src');
+          var name = img.getAttribute('data-name') || 'sticker';
+          ws.send(JSON.stringify({ type: 'image', data: url, name: name }));
+        });
+      }
+
+      // 首次访问弹窗 & 自动加入
+      var nameMask = document.getElementById('nameMask');
+      var firstName = document.getElementById('firstName');
+      var nameOk = document.getElementById('nameOk');
+      var nameCancel = document.getElementById('nameCancel');
+
+      function showNameModal() {
+        nameMask.style.display = 'flex';
+        // 显示弹窗时立即隐藏底部昵称/加入（双保险）
+        try { nameInput.style.display = 'none'; } catch(e) {}
+        try { joinBtn.style.display = 'none'; } catch(e) {}
+        setTimeout(function(){ firstName.focus(); }, 50);
+      }
+      function hideNameModal() {
+        nameMask.style.display = 'none';
+        // 加入后这两个控件保持隐藏
+        try { nameInput.style.display = 'none'; } catch(e) {}
+        try { joinBtn.style.display = 'none'; } catch(e) {}
+      }
+      function doJoinWith(name) {
+        nameInput.value = name;
+        meName.textContent = name;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          connect();
+        }
+      }
+      (function initJoin() {
+        try {
+          var saved = localStorage.getItem('mc_name') || '';
+          if (saved) { doJoinWith(saved); } else { showNameModal(); }
+        } catch (e) { showNameModal(); }
+      })();
+      nameOk.addEventListener('click', function(){
+        var v = (firstName.value || '').trim();
+        if (!v) { firstName.focus(); return; }
+        try { localStorage.setItem('mc_name', v); } catch (e) {}
+        hideNameModal();
+        doJoinWith(v);
+      });
+      nameCancel.addEventListener('click', function(){
+        var gen = '访客' + Math.floor(Math.random()*1000);
+        try { localStorage.setItem('mc_name', gen); } catch (e) {}
+        hideNameModal();
+        doJoinWith(gen);
+      });
+
+      // 打开图片选择
+      pickBtn.addEventListener('click', function() { picker.click(); });
+      picker.addEventListener('change', function() { if (picker.files && picker.files[0]) uploadAndSend(picker.files[0]); });
+
+      // 手动加入（PC 可见时）
+      joinBtn.addEventListener('click', connect);
+      nameInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') connect(); });
+
+      // 发送文本（Enter 发送；如需 Ctrl+Enter 发送可改此处逻辑）
+      sendBtn.addEventListener('click', function() {
+        var text = msgInput.value.trim();
+        if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: 'chat', data: text }));
+        msgInput.value = '';
+        msgInput.focus();
+      });
+      msgInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') sendBtn.click(); });
+
+      // 拖拽上传
+      ['dragenter','dragover','dragleave','drop'].forEach(function(evt) {
+        dropZone.addEventListener(evt, function(e) { e.preventDefault(); e.stopPropagation(); });
+      });
+      dropZone.addEventListener('dragenter', function() { dropZone.style.background = '#eef5ff'; });
+      dropZone.addEventListener('dragover',  function() { dropZone.style.background = '#eef5ff'; });
+      dropZone.addEventListener('dragleave', function() { dropZone.style.background = ''; });
+      dropZone.addEventListener('drop', function(e) {
+        dropZone.style.background = '';
+        var file = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file) uploadAndSend(file);
+      });
+
+      // 粘贴上传
+      document.addEventListener('paste', function(e) {
+        var items = (e.clipboardData && e.clipboardData.items) ? e.clipboardData.items : [];
+        for (var i = 0; i < items.length; i++) {
+          var it = items[i];
+          if (it.type && it.type.indexOf('image/') === 0) {
+            var file = it.getAsFile();
+            if (file) uploadAndSend(file);
+            break;
+          }
+        }
+      });
+
+      // iOS 软键盘：输入框聚焦时滚动到视口中间
+      msgInput.addEventListener('focus', function(){ setTimeout(function(){ msgInput.scrollIntoView({block:'center'}); }, 100); });
+    })();
+  </script>
+</body>
+</html>
