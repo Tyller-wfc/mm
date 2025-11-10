@@ -170,7 +170,7 @@
     .btn { background: #2563eb; border: none; color: #fff; padding: 10px 14px; border-radius: 10px; cursor: pointer; font-weight: 600; }
     .btn.secondary { background: #f3f4f6; color: #333; border: 1px solid #e5e7eb; }
 
-    /* 当弹窗显示时，强制隐藏底部昵称/加入（双保险） */
+    /* 弹窗显示时隐藏底部昵称/加入（双保险） */
     #nameMask[style*="display: flex"] ~ .main + .input #name,
     #nameMask[style*="display: flex"] ~ .main + .input #join {
       display: none !important;
@@ -203,7 +203,7 @@
         padding-top: 8px;
         padding-bottom: calc(8px + var(--safe-bottom));
         display: grid;
-        grid-template-columns: auto auto 1fr auto; /* emoji, image, msg, send */
+        grid-template-columns: auto auto 1fr auto; /* emoji, file, msg, send */
         gap: 8px;
       }
       .emoji-panel {
@@ -241,7 +241,7 @@
 
     <div class="main">
       <section class="chat">
-        <div class="drop">拖拽图片到这里，或在输入框内粘贴图片，即可发送（≤5MB）</div>
+        <div class="drop">拖拽文件到这里，或在输入框内粘贴图片，即可发送（≤5MB）</div>
         <div id="messages" class="messages"></div>
       </section>
       <aside>
@@ -253,12 +253,12 @@
 
     <div class="input">
       <button id="emojiBtn" title="表情">😀</button>
-      <button id="pickBtn" title="发送图片">图片</button>
+      <button id="pickBtn" title="发送文件">文件</button>
       <input id="name" type="text" placeholder="输入你的昵称…" />
       <button id="join">加入</button>
       <input id="msg" type="text" placeholder="输入消息，回车发送…" disabled />
       <button id="send" disabled>发送</button>
-      <input id="pick" type="file" accept="image/*" style="display:none" />
+      <input id="pick" type="file" style="display:none" />
     </div>
   </div>
 
@@ -278,7 +278,7 @@
       var dropZone = document.querySelector('.drop');
       var ws = null, me = null;
 
-      /* 如果你的页面里没有这段面板 HTML，下面会创建一份（包含贴纸四张） */
+      /* Emoji/贴纸面板（含 4 张内置 SVG 贴纸） */
       var emojiPanel = (function ensureEmojiPanel(){
         var panel = document.getElementById('emojiPanel');
         if (!panel) {
@@ -345,6 +345,17 @@
             cap.textContent = name;
             div.appendChild(cap);
           }
+        } else if (type === 'file') {
+          var whof = document.createElement('div');
+          whof.innerHTML = '<strong>' + (user || '系统') + ':</strong> <span class="ts">' + (ts || '') + '</span>';
+          var link = document.createElement('a');
+          link.href = data;
+          link.textContent = name || '下载文件';
+          link.target = "_blank";
+          link.style.color = "#2563eb";
+          link.rel = "noopener";
+          div.appendChild(whof);
+          div.appendChild(link);
         } else {
           var who2 = document.createElement('strong');
           who2.textContent = (user || '系统') + ': ';
@@ -373,7 +384,7 @@
         }
       }
 
-      // 带 60s 超时保护的上传
+      // 上传（任意文件；图片作为图片消息，其他作为文件消息）+ 60s 超时
       function uploadAndSend(file) {
         if (!file) return;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -392,12 +403,16 @@
             return res.json();
           })
           .then(function(info) {
-            ws.send(JSON.stringify({ type: 'image', data: info.url, name: info.name }));
+            if (file.type && file.type.startsWith('image/')) {
+              ws.send(JSON.stringify({ type: 'image', data: info.url, name: info.name }));
+            } else {
+              ws.send(JSON.stringify({ type: 'file', data: info.url, name: info.name }));
+            }
             scrollToBottom();
             picker.value = '';
           })
           .catch(function(e) {
-            var msg = (e.name === 'AbortError') ? '图片上传超时（60s），请检查网络/扩展' : ('图片发送失败：' + e.message);
+            var msg = (e.name === 'AbortError') ? '文件上传超时（60s），请检查网络/扩展' : ('文件发送失败：' + e.message);
             addMessage({ type: 'system', data: msg });
             picker.value = '';
           })
@@ -426,7 +441,7 @@
           else if (msg.type === 'history') {
             var arr = msg.data || [];
             for (var i = 0; i < arr.length; i++) addMessage(arr[i], arr[i].user === me);
-          } else if (msg.type === 'chat' || msg.type === 'system' || msg.type === 'image') {
+          } else if (msg.type === 'chat' || msg.type === 'system' || msg.type === 'image' || msg.type === 'file') {
             addMessage(msg, msg.user === me);
           }
         };
@@ -559,7 +574,7 @@
         doJoinWith(gen);
       });
 
-      // 打开图片选择
+      // 打开文件选择
       pickBtn.addEventListener('click', function() { picker.click(); });
       picker.addEventListener('change', function() { if (picker.files && picker.files[0]) uploadAndSend(picker.files[0]); });
 
@@ -567,7 +582,7 @@
       joinBtn.addEventListener('click', connect);
       nameInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') connect(); });
 
-      // 发送文本（Enter 发送；如需 Ctrl+Enter 发送可改此处逻辑）
+      // 发送文本
       sendBtn.addEventListener('click', function() {
         var text = msgInput.value.trim();
         if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
@@ -577,7 +592,7 @@
       });
       msgInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') sendBtn.click(); });
 
-      // 拖拽上传
+      // 拖拽上传（任意文件）
       ['dragenter','dragover','dragleave','drop'].forEach(function(evt) {
         dropZone.addEventListener(evt, function(e) { e.preventDefault(); e.stopPropagation(); });
       });
@@ -590,7 +605,7 @@
         if (file) uploadAndSend(file);
       });
 
-      // 粘贴上传
+      // 粘贴上传（通常仅对图片生效）
       document.addEventListener('paste', function(e) {
         var items = (e.clipboardData && e.clipboardData.items) ? e.clipboardData.items : [];
         for (var i = 0; i < items.length; i++) {
